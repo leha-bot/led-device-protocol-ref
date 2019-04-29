@@ -85,6 +85,20 @@ public:
 	}
 };
 
+/// @brief Represents a device with "raw" state.
+struct led_device {
+	enum color {
+		red, green, blue
+	};
+	color current_color;
+	enum state {
+		off, on
+	};
+	state current_state;
+	/// @brief Frequency rate (in Hz, 0-5).
+	unsigned int rate;
+};
+
 } // namespace led_server
 
 int main()
