@@ -1,5 +1,6 @@
 #include "utils/filesystem.hpp"
 #include "utils/string_view.hpp"
+#include "utils/enum_converter.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -98,6 +99,25 @@ struct led_device {
 	/// @brief Frequency rate (in Hz, 0-5).
 	unsigned int rate;
 };
+
+/// @brief Helper conversions for known device enum types.
+namespace enum_conversions {
+	template <typename Enum>
+	using enum_converter = ::utils::enum_converter<Enum>;
+	using color = led_device::color;
+	using state = led_device::state;
+
+	static const enum_converter<color> color_to_string {
+		MAKE_ENUM_MAP_ENTRY_WITH_NS(color, red),
+		MAKE_ENUM_MAP_ENTRY_WITH_NS(color, green),
+		MAKE_ENUM_MAP_ENTRY_WITH_NS(color, blue)
+	};
+
+	static const enum_converter<led_device::state> state_to_string = {
+		MAKE_ENUM_MAP_ENTRY_WITH_NS(state, off),
+		MAKE_ENUM_MAP_ENTRY_WITH_NS(state, on)
+	};
+}
 
 } // namespace led_server
 
