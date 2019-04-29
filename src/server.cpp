@@ -15,6 +15,21 @@ namespace led_server {
 using command_result = std::pair<bool, const std::string>;
 using command_handler = std::function<command_result(const utils::string_view &)>;
 
+command_result make_success_result(std::string result)
+{
+	return { true, result };
+}
+
+command_result make_success_result(const utils::string_view &result)
+{
+	return { true, std::string(result.data(), result.length()) };
+}
+
+command_result make_failed_result()
+{
+	return { false, "" };
+}
+
 /// @brief Hosts commands and passes the appropriate commands to the handlers
 class protocol_parser {
 	std::map<std::string, command_handler, std::less<>> commands;
@@ -53,7 +68,7 @@ public:
 		auto command = commands.find(command_name_sv);
 		if (command == commands.end()) {
 			// command is not found
-			return {false, ""};
+			return make_failed_result();
 		}
 		if (delim == line.end() || *delim == '\n') {
 			return command->second(utils::string_view{ "" });
