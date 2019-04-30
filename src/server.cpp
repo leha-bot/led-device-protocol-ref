@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <iostream>
 #include <map>
 #include <string>
 #include <utility>
@@ -246,6 +247,76 @@ public:
 };
 
 } // namespace led_server
+
+/// @brief Smoke tests for protocol parser and device.
+/// @todo  Use CTest for it.
+namespace tests {
+
+using namespace utils;
+
+void test_led_protocol_parser()
+{
+	/// @brief Helper class for checking protocol messages parser.
+	class TestCommands {
+		bool flazhok = false;
+	public:
+		led_server::command_result set_flazhok(const utils::string_view &param)
+		{
+			if (param == "false") {
+				flazhok = false;
+			}
+			else if (param == "true") {
+				flazhok = true;
+			}
+			else {
+				return led_server::make_failed_result();
+			}
+			return led_server::make_success_result(param);
+		}
+
+		led_server::command_result get_flazhok(const utils::string_view &param)
+		{
+			return led_server::make_success_result(std::string((flazhok) ? "true" : "false"));
+		}
+	};
+
+	TestCommands testik;
+	led_server::protocol_parser protocol;
+
+	protocol.add_command("set-flag", [&testik](const utils::string_view &param) {return testik.set_flazhok(param); });
+	protocol.add_command("get-flag", [&testik](const utils::string_view &param) {return testik.get_flazhok(param); });
+
+	const char *test_commands[] = { "set-flag\n", "set-flag true\n", "get-flag\n",
+		"set-flag false\n", "get-flag\n", "set-flag\n" };
+	std::cout << "Test Client-server communications protocol parser, via std::cout\n";
+	for (auto test_command : test_commands) {
+		std::cout << "C: " << test_command;
+		std::cout << "S: ";
+		protocol.handle_result(std::cout, protocol.handle_command_line(test_command));
+	}
+}
+
+void test_led_device()
+{
+	led_server::led_device model;
+	led_server::led_device_controller model_protocol_controller(model);
+	led_server::protocol_parser protocol_parser;
+	model_protocol_controller.register_device_commands(protocol_parser);
+	const char *test_commands[] = { "set-led-color red", "get-led-color",
+		"set-led-color grin", "get-led-color", "set-led-color green",
+		"set-led-colorf", "set-led-state on", "get-led-state", "set-led-state off",
+		"set-led-rate 0", "get-led-rate", "get-led-rated", "set-led-rate 6",
+		"get-led-rate", "set-led-rate 5"
+	};
+	std::cout << "Test LED device commands using std::cout\n";
+	for (auto command : test_commands) {
+		std::cout << "C: " << command << std::endl;
+		std::cout << "S: ";
+		protocol_parser.handle_result(std::cout, protocol_parser.handle_command_line(command));
+	}
+}
+
+} // namespace tests
 
 int main()
 {
