@@ -320,6 +320,8 @@ void test_led_device()
 
 int main()
 {
-	utils::filesystem::directory_entry ent;
+	// smoke tests
+	tests::test_led_protocol_parser();
+	tests::test_led_device();
 	return 0;
 }
