@@ -243,7 +243,9 @@ void test_led_device()
 
 } // namespace tests
 
-int main()
+void start_pipe_server_transport(led_server::protocol_parser &parser);
+
+int main(int argc, char *argv[])
 {
 	// smoke tests
 	tests::test_led_protocol_parser();
@@ -254,5 +256,8 @@ int main()
 	led_server::led_device device;
 	led_server::led_device_controller device_commands_controller(device);
 	device_commands_controller.register_device_commands(parser);
+
+	// start server
+	start_pipe_server_transport(parser);
 	return 0;
 }
