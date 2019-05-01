@@ -248,5 +248,11 @@ int main()
 	// smoke tests
 	tests::test_led_protocol_parser();
 	tests::test_led_device();
+
+	// init device
+	led_server::protocol_parser parser;
+	led_server::led_device device;
+	led_server::led_device_controller device_commands_controller(device);
+	device_commands_controller.register_device_commands(parser);
 	return 0;
 }
