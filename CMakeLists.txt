@@ -14,6 +14,7 @@ endif()
 
 add_executable(led_state_server
 	"src/server.cpp"
+	"src/terminal_charset_utils.cpp"
 	"src/led_server_pipe_transport.cpp")
 target_include_directories(led_state_server SYSTEM PUBLIC ${Boost_INCLUDE_DIRS})
 target_include_directories(led_state_server PUBLIC include)
