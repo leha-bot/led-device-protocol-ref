@@ -8,7 +8,6 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/read.hpp>
 #include <boost/asio/streambuf.hpp>
-#include <boost/asio/write.hpp>
 #include <boost/process/async_pipe.hpp>
 
 #include <iostream>
@@ -42,7 +41,6 @@ void start_pipe_server_transport(led_server::protocol_parser &parser)
 			}
 		}
 		);
-		asio::write(server_pipe, asio::buffer("set-led-color red"));
 		pipe_io_ctx.run();
 	}
 	catch (std::system_error &ec) {
