@@ -3,6 +3,7 @@
 #include "led_server/protocol_parser.hpp"
 
 #include "utils/string_view.hpp"
+#include "utils/terminal.hpp"
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/read.hpp>
@@ -25,6 +26,7 @@ void start_pipe_server_transport(led_server::protocol_parser &parser)
 	pipe_name_ostream << R"(\\.\pipe\)" << "led_server_pipe_" << std::this_thread::get_id();
 	std::string pipe_name = pipe_name_ostream.str();
 	std::cout << "Try to open named pipe " << pipe_name << std::endl;
+	utils::adjust_terminal_charset();
 	try {
 		bp::async_pipe server_pipe(pipe_io_ctx, pipe_name);
 
