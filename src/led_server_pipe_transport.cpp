@@ -18,7 +18,7 @@
 #include <boost/winapi/file_management.hpp>
 #include <boost/winapi/pipes.hpp>
 
-auto create_native_asio_named_pipe_handle(const utils::string_view& name)
+auto create_native_asio_named_pipe_handle(const utils::string_view &name)
 {
 	// Windows pipes must have name in specified form: R"\\.\pipe\<name>"
 	std::string s = name.find(R"(\\.\pipe\)") == 0 ? name.to_string()
@@ -33,7 +33,10 @@ auto create_native_asio_named_pipe_handle(const utils::string_view& name)
 #else
 #include <boost/asio/posix/stream_descriptor.hpp>
 #include <sys/stat.h>
-
+auto create_native_asio_named_pipe_handle(const utils::string_view &name)
+{
+	return mkfifo(name.data(), 0666);
+}
 #endif
 
 class server_protocol_handler {
@@ -44,7 +47,7 @@ public:
 
 	void handle(boost::system::error_code ec, size_t sz)
 	{
-		if (sz) {
+		if (sz != 0) {
 			parser.handle_command_line("");
 		}
 		else {
@@ -56,11 +59,11 @@ public:
 void start_pipe_server_transport(led_server::protocol_parser &parser)
 {
 	namespace asio = ::boost::asio;
+	auto pipe_native_handle = create_native_asio_named_pipe_handle("test");
+	asio::io_context pipe_ctx;
+	asio::streambuf buf;	
 	// server_protocol_handler handler(parser);
 #ifdef _WIN32
-	auto p = create_native_asio_named_pipe_handle("test");
-	asio::io_context pipe_ctx;
-	asio::streambuf buf;
 	asio::windows::stream_handle pipe_stream_handle(pipe_ctx, p);
 	asio::windows::overlapped_ptr pipe_overlapped(pipe_ctx,
 		[](boost::system::error_code ec, size_t sz){});
@@ -120,7 +123,29 @@ void start_pipe_server_transport(led_server::protocol_parser &parser)
 	}*/
 		handler);
 #else
-	asio::posix::stream_descriptor fd;
+	asio::posix::stream_descriptor fd(pipe_ctx, pipe_native_handle);
+	std::function<void(boost::system::error_code, size_t)> handler = [&fd, &buf, &parser, &handler](boost::system::error_code ec, size_t sz)
+		{
+			if (ec) {
+				std::cout << "S: error while reading from pipe: " << ec << std::endl;
+				return;
+			}
+			if (sz) {
+				std::stringstream ss;
+				auto buf_data = buf.data();
+				const std::string s(asio::buffer_cast<const char*>(buf_data), buf.size());
+				parser.handle_result(ss, parser.handle_command_line(s));
+				asio::async_write(fd, asio::buffer(ss.str()),
+					[](boost::system::error_code ec, size_t sz) {});
+				asio::async_read_until(fd, buf, '\n', handler);
+			}
+			else {
+				std::cout << "S: got empty string. Exiting." << std::endl;
+			}
+		};
+	
+		asio::async_read_until(fd, buf, '\n',
+			handler);
 #endif
 	pipe_ctx.run();
 }
