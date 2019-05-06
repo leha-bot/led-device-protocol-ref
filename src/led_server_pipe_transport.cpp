@@ -1,50 +1,126 @@
-/// @file led_pipe_server.cpp Contains server's transport implementation using 
-///       Boost Async Pipes.
-#include "led_server/protocol_parser.hpp"
-
-#include "utils/string_view.hpp"
-#include "utils/terminal.hpp"
-
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/read.hpp>
-#include <boost/asio/streambuf.hpp>
-#include <boost/process/async_pipe.hpp>
-
+#include <functional>
 #include <iostream>
-#include <sstream>
 #include <string>
-#include <thread>
-#include <utility>
+#include <sstream>
+
+#include "led_server/protocol_parser.hpp"
+#include "utils/string_view.hpp"
+#define BOOST_ASIO_HAS_BOOST_REGEX 0
+#include <boost/asio/read_until.hpp>
+#include <boost/asio/write.hpp>
+#include <boost/asio/buffer.hpp>
+#include <boost/asio/streambuf.hpp>
+#include <boost/asio/placeholders.hpp>
+#include <boost/bind.hpp>
+#ifdef _WIN32
+#include <boost/asio/windows/overlapped_ptr.hpp>
+#include <boost/asio/windows/stream_handle.hpp>
+#include <boost/winapi/file_management.hpp>
+#include <boost/winapi/pipes.hpp>
+
+auto create_native_asio_named_pipe_handle(const utils::string_view& name)
+{
+	// Windows pipes must have name in specified form: R"\\.\pipe\<name>"
+	std::string s = name.find(R"(\\.\pipe\)") == 0 ? name.to_string()
+		: (std::string(R"(\\.\pipe\)") + name.to_string());
+	return ::boost::winapi::create_named_pipe(s.c_str(),
+		::boost::winapi::PIPE_ACCESS_DUPLEX_ |
+		::boost::winapi::FILE_FLAG_OVERLAPPED_ |
+		::boost::winapi::FILE_FLAG_FIRST_PIPE_INSTANCE_,
+		0, 1, 65536, 65, 0, nullptr);
+}
+
+#else
+#include <boost/asio/posix/stream_descriptor.hpp>
+#include <sys/stat.h>
+
+#endif
+
+class server_protocol_handler {
+	led_server::protocol_parser& parser;
+public:
+	server_protocol_handler(led_server::protocol_parser& parser)
+		:parser(parser) {}
+
+	void handle(boost::system::error_code ec, size_t sz)
+	{
+		if (sz) {
+			parser.handle_command_line("");
+		}
+		else {
+			std::cout << "S: Pipe read error " << ec << std::endl;
+		}
+	}
+};
 
 void start_pipe_server_transport(led_server::protocol_parser &parser)
 {
-	namespace asio = boost::asio;
-	namespace bp = boost::process;
-	asio::io_context pipe_io_ctx;
-	std::ostringstream pipe_name_ostream;
-	pipe_name_ostream << R"(\\.\pipe\)" << "led_server_pipe_" << std::this_thread::get_id();
-	std::string pipe_name = pipe_name_ostream.str();
-	std::cout << "Try to open named pipe " << pipe_name << std::endl;
-	utils::adjust_terminal_charset();
-	try {
-		bp::async_pipe server_pipe(pipe_io_ctx, pipe_name);
-
-		asio::streambuf buf;
-		asio::async_read(server_pipe, buf,
-			[&buf](const boost::system::error_code &ec, std::size_t size) {
-			if (size != 0) {
-				std::cout << "S: got string from pipe: \"" << &buf << "\"" << std::endl;
-				// waiting until '\n'
-			}
-			else {
-				std::cerr << "error " << ec << std::endl;
-			}
+	namespace asio = ::boost::asio;
+	// server_protocol_handler handler(parser);
+#ifdef _WIN32
+	auto p = create_native_asio_named_pipe_handle("test");
+	asio::io_context pipe_ctx;
+	asio::streambuf buf;
+	asio::windows::stream_handle pipe_stream_handle(pipe_ctx, p);
+	asio::windows::overlapped_ptr pipe_overlapped(pipe_ctx,
+		[](boost::system::error_code ec, size_t sz){});
+	BOOL ok = ConnectNamedPipe(p, pipe_overlapped.get());
+	auto last_error = GetLastError();
+	if (!ok && last_error == ERROR_IO_PENDING) {
+		// we need to complete pending I/O requests.
+		// ownership of the OVERLAPPED object passes to the io_context.
+		boost::system::error_code ec(last_error, asio::error::get_system_category());
+		pipe_overlapped.complete(ec, 0);
+	}
+	else {
+		if (last_error != 0) {
+			// fail;
+			std::cout << "S: error " << last_error << " connecting to named pipe!" << std::endl;
+			return;
 		}
-		);
-		pipe_io_ctx.run();
-	}
-	catch (std::system_error &ec) {
-		std::cout << "System Error: " << ec.what() << ", error code: " << ec.code() << std::endl;
+		// connection succeded, ownership of the OVERLAPPED passes to the io_context,
+		// we should release this handle.
+		pipe_overlapped.release();
 	}
 
+	std::string s;
+	std::function<void(boost::system::error_code, size_t)> handler = [&pipe_stream_handle, &buf, &parser, &handler](boost::system::error_code ec, size_t sz)
+	{
+		if (ec) {
+			std::cout << "S: error while reading from pipe: " << ec << std::endl;
+			return;
+		}
+		if (sz) {
+			std::stringstream ss;
+			auto buf_data = buf.data();
+			const std::string s(asio::buffer_cast<const char*>(buf_data), buf.size());
+			parser.handle_result(ss, parser.handle_command_line(s));
+			asio::async_write(pipe_stream_handle, asio::buffer(ss.str()),
+				[](boost::system::error_code ec, size_t sz) {});
+			asio::async_read_until(pipe_stream_handle, buf, '\n', handler);
+		}
+		else {
+			std::cout << "S: got empty string. Exiting." << std::endl;
+		}
+	};
+
+	asio::async_read_until(pipe_stream_handle, buf, '\n',
+		/*
+	[&pipe_stream_handle, &parser, &s, &buf]
+	(boost::system::error_code ec, size_t sz) {
+		if (sz) {
+			std::stringstream ss;
+			parser.handle_result(ss, parser.handle_command_line(s));
+			asio::async_write(pipe_stream_handle, asio::buffer(ss.str()),
+				[](boost::system::error_code ec, size_t sz) {});
+		}
+		else {
+			std::cout << "S: Pipe read error " << ec << std::endl;
+		}
+	}*/
+		handler);
+#else
+	asio::posix::stream_descriptor fd;
+#endif
+	pipe_ctx.run();
 }
