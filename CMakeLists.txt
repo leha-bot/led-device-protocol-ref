@@ -9,7 +9,7 @@ else()
 	find_package(Boost REQUIRED COMPONENTS filesystem)
 endif()
 if (NOT Boost_FOUND)
-	message("Can't find Boost libraries!" FATAL_ERROR)
+	message(FATAL_ERROR "Can't find Boost libraries! (Hint: set BOOST_ROOT on Windows or install Boost package if you are on *nix.)")
 endif()
 find_package(Threads)
 
