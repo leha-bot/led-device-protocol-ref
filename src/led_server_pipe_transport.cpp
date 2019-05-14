@@ -254,7 +254,7 @@ void start_pipe_server_transport(led_server::protocol_parser &parser)
 	std::string pipe_name = "test3";
 	std::cout << "S: opening pipe " << pipe_name << std::endl;
 	asio::io_context pipe_ctx;
-	auto pipe = utils::pipes::create_pipe(pipe_ctx, pipe_name);
+	auto pipe = utils::pipes::create_pipe_pair(pipe_ctx, pipe_name);
 #ifdef _WIN32
 	using platrform_stream_handle = asio::windows::stream_handle;
 	platform_stream_handle pipe_stream_handle(pipe_ctx, p);
@@ -284,11 +284,10 @@ void start_pipe_server_transport(led_server::protocol_parser &parser)
 	try {		
 		// platform_stream_handle fd(pipe_ctx, pipe_native_handle);
 		TransportHandler<utils::pipes::asio_pipe_stream_pair> handler{parser, pipe};
-		if (false) {
-			std::cout << "Waiting connections to pipe " << pipe_name
-					  << "_client. Answer will be posted to "
-					  << pipe_name << "_server.\n";
-		}
+		std::cout << "Waiting connections to pipe " << pipe_name
+				  << "_client. Answer will be posted to "
+				  << pipe_name << "_server.\n";
+		
 		pipe.read_stream().async_wait(asio::posix::stream_descriptor::wait_read,
 					  [&pipe, &handler](const boost::system::error_code &ec) {
 			using namespace std::placeholders;
